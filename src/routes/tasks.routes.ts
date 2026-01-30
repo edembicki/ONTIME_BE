@@ -102,33 +102,40 @@ router.put('/:id', (req, res) => {
     userId,
   } = req.body;
 
-  // (Opcional: exigir userId para evitar “sumir” do perfil)
-  if (!userId) return res.status(400).json({ error: 'userId is required' });
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
 
-  db.prepare(`
+  const result = db.prepare(`
     UPDATE tasks
-       SET title = ?,
-           description = ?,
-           project = ?,
-           billable = ?,
-           status = ?,
-           default_duration = ?,
-           user_id = ?,
-           updated_at = datetime('now')
+       SET
+         title            = COALESCE(?, title),
+         description      = COALESCE(?, description),
+         project          = COALESCE(?, project),
+         billable         = COALESCE(?, billable),
+         status           = COALESCE(?, status),
+         default_duration = COALESCE(?, default_duration),
+         user_id          = COALESCE(?, user_id),
+         updated_at       = datetime('now')
      WHERE id = ?
   `).run(
-    title,
+    title ?? null,
     description ?? null,
     project ?? null,
-    billable ? 1 : 0,
-    status ?? 'backlog',
-    defaultDuration ?? '8h',
-    userId,
+    billable !== undefined ? (billable ? 1 : 0) : null,
+    status ?? null,
+    defaultDuration ?? null,
+    userId ?? null,
     req.params.id
   );
 
+  if (result.changes === 0) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
   res.sendStatus(204);
 });
+
 
 router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);

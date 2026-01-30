@@ -1,10 +1,19 @@
 import { db } from './database';
 
 export function runMigrations() {
+  /**
+   * =====================================
+   * GARANTE FOREIGN KEYS ATIVAS NO SQLITE
+   * =====================================
+   */
+  db.exec('PRAGMA foreign_keys = ON;');
+
+  /**
+   * =========================
+   * TASKS
+   * =========================
+   */
   db.exec(`
-    /* =========================
-       TASKS
-    ========================= */
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -17,11 +26,18 @@ export function runMigrations() {
       created_at TEXT,
       updated_at TEXT
     );
+  `);
 
-    /* =========================
-       TIME ENTRIES (CALENDÁRIO)
-    ========================= */
-    CREATE TABLE IF NOT EXISTS time_entries (
+  /**
+   * =========================
+   * TIME ENTRIES
+   * (recriação com ON DELETE CASCADE)
+   * =========================
+   */
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    CREATE TABLE IF NOT EXISTS time_entries_new (
       id TEXT PRIMARY KEY,
       task_id TEXT,
       user_id TEXT,
@@ -30,12 +46,50 @@ export function runMigrations() {
       end TEXT,
       hours REAL,
       notes TEXT,
-      FOREIGN KEY(task_id) REFERENCES tasks(id)
+      FOREIGN KEY (task_id)
+        REFERENCES tasks(id)
+        ON DELETE CASCADE
     );
 
-    /* =========================
-       REPORTS (SEVENSYS)
-    ========================= */
+    INSERT INTO time_entries_new (
+      id,
+      task_id,
+      user_id,
+      date,
+      start,
+      end,
+      hours,
+      notes
+    )
+    SELECT
+      id,
+      task_id,
+      user_id,
+      date,
+      start,
+      end,
+      hours,
+      notes
+    FROM time_entries
+    WHERE EXISTS (
+      SELECT 1 FROM sqlite_master
+      WHERE type = 'table'
+        AND name = 'time_entries'
+    );
+
+    DROP TABLE IF EXISTS time_entries;
+
+    ALTER TABLE time_entries_new RENAME TO time_entries;
+
+    PRAGMA foreign_keys = ON;
+  `);
+
+  /**
+   * =========================
+   * REPORTS
+   * =========================
+   */
+  db.exec(`
     CREATE TABLE IF NOT EXISTS reports (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -43,24 +97,30 @@ export function runMigrations() {
       destination_email TEXT NOT NULL,
       period_start TEXT NOT NULL,
       period_end TEXT NOT NULL,
-      format TEXT NOT NULL,        -- csv | pdf | pdf+csv
+      format TEXT NOT NULL,
       csv_base64 TEXT,
       pdf_base64 TEXT,
       created_at TEXT NOT NULL
     );
+  `);
 
-    /* =========================
-       USER SETTINGS
-    ========================= */
+  /**
+   * =========================
+   * USER SETTINGS
+   * =========================
+   */
+  db.exec(`
     CREATE TABLE IF NOT EXISTS user_settings (
       user_id TEXT PRIMARY KEY,
       sender_email TEXT
     );
   `);
 
-  /* =========================
-     BACKWARD COMPATIBILITY
-  ========================= */
+  /**
+   * =========================
+   * BACKWARD COMPATIBILITY
+   * =========================
+   */
   ensureColumn('tasks', 'default_duration', 'TEXT');
   ensureColumn('tasks', 'user_id', 'TEXT');
 
@@ -69,7 +129,6 @@ export function runMigrations() {
   ensureColumn('reports', 'destination_email', 'TEXT');
   ensureColumn('reports', 'csv_base64', 'TEXT');
   ensureColumn('reports', 'pdf_base64', 'TEXT');
-
   ensureColumn('reports', 'sender_email', 'TEXT');
   ensureColumn('reports', 'period_start', 'TEXT');
   ensureColumn('reports', 'period_end', 'TEXT');
@@ -79,9 +138,11 @@ export function runMigrations() {
   ensureColumn('user_settings', 'sender_email', 'TEXT');
 }
 
-/* =========================
-   HELPER
-========================= */
+/**
+ * =========================
+ * HELPER
+ * =========================
+ */
 function ensureColumn(
   table: string,
   column: string,

@@ -4,14 +4,34 @@ import crypto from 'crypto';
 
 const router = Router();
 
+/**
+ * =========================
+ * CREATE TIME ENTRY
+ * =========================
+ */
 router.post('/', (req, res) => {
   const id = crypto.randomUUID();
-  const { taskId, userId, date, start, end, hours, notes } = req.body;
+
+  const {
+    taskId,
+    userId,
+    date,
+    start,
+    end,
+    hours,
+    notes,
+  } = req.body;
 
   if (!userId) {
-    return res.status(400).json({
-      error: 'userId é obrigatório para time_entry',
-    });
+    return res
+      .status(400)
+      .json({ error: 'userId é obrigatório' });
+  }
+
+  if (!taskId) {
+    return res
+      .status(400)
+      .json({ error: 'taskId é obrigatório' });
   }
 
   db.prepare(`
@@ -22,35 +42,87 @@ router.post('/', (req, res) => {
     id,
     taskId,
     userId,
-    date,
-    start,
-    end,
-    hours,
+    date ?? null,
+    start ?? null,
+    end ?? null,
+    hours ?? null,
     notes ?? null
   );
 
   res.status(201).json({ id });
 });
 
+/**
+ * =========================
+ * LIST TIME ENTRIES
+ * =========================
+ */
 router.get('/', (req, res) => {
   const { userId } = req.query;
 
   const rows = userId
-    ? db.prepare(`
-        SELECT te.*, t.title AS task_title
-          FROM time_entries te
-          JOIN tasks t ON t.id = te.task_id
-         WHERE te.user_id = ?
-         ORDER BY te.date DESC
-      `).all(userId)
-    : db.prepare(`
-        SELECT te.*, t.title AS task_title
-          FROM time_entries te
-          JOIN tasks t ON t.id = te.task_id
-         ORDER BY te.date DESC
-      `).all();
+    ? db
+        .prepare(
+          `
+        SELECT
+          te.id,
+          te.task_id,
+          te.user_id,
+          te.date,
+          te.start,
+          te.end,
+          te.hours,
+          te.notes,
+          t.title AS task_title
+        FROM time_entries te
+        JOIN tasks t ON t.id = te.task_id
+        WHERE te.user_id = ?
+        ORDER BY te.start ASC
+      `
+        )
+        .all(userId)
+    : db
+        .prepare(
+          `
+        SELECT
+          te.id,
+          te.task_id,
+          te.user_id,
+          te.date,
+          te.start,
+          te.end,
+          te.hours,
+          te.notes,
+          t.title AS task_title
+        FROM time_entries te
+        JOIN tasks t ON t.id = te.task_id
+        ORDER BY te.start ASC
+      `
+        )
+        .all();
 
   res.json(rows);
+});
+
+/**
+ * =========================
+ * DELETE TIME ENTRY
+ * =========================
+ */
+router.delete('/:id', (req, res) => {
+  const { id } = req.params;
+
+  const result = db
+    .prepare('DELETE FROM time_entries WHERE id = ?')
+    .run(id);
+
+  if (result.changes === 0) {
+    return res
+      .status(404)
+      .json({ error: 'Time entry não encontrado' });
+  }
+
+  res.sendStatus(204);
 });
 
 export default router;
