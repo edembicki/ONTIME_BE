@@ -4,8 +4,39 @@ import crypto from 'crypto';
 
 const router = Router();
 
+/**
+ * =========================
+ * LIST TASKS
+ * =========================
+ * Prioridade:
+ * 1) sheetId
+ * 2) userId (legado)
+ */
 router.get('/', (req, res) => {
+  const sheetId = (req.query.sheetId as string) || null;
   const userId = (req.query.userId as string) || null;
+
+  if (sheetId) {
+    return res.json(
+      db.prepare(`
+        SELECT
+          id,
+          title,
+          description,
+          project,
+          billable,
+          status,
+          default_duration,
+          sheet_id,
+          user_id,
+          created_at,
+          updated_at
+        FROM tasks
+        WHERE sheet_id = ?
+        ORDER BY created_at DESC
+      `).all(sheetId)
+    );
+  }
 
   if (userId) {
     return res.json(
@@ -18,6 +49,7 @@ router.get('/', (req, res) => {
           billable,
           status,
           default_duration,
+          sheet_id,
           user_id,
           created_at,
           updated_at
@@ -28,6 +60,7 @@ router.get('/', (req, res) => {
     );
   }
 
+  // fallback (admin / debug)
   return res.json(
     db.prepare(`
       SELECT
@@ -38,6 +71,7 @@ router.get('/', (req, res) => {
         billable,
         status,
         default_duration,
+        sheet_id,
         user_id,
         created_at,
         updated_at
@@ -47,6 +81,11 @@ router.get('/', (req, res) => {
   );
 });
 
+/**
+ * =========================
+ * CREATE TASK
+ * =========================
+ */
 router.post('/', (req, res) => {
   const id = crypto.randomUUID();
 
@@ -57,11 +96,19 @@ router.post('/', (req, res) => {
     status,
     billable,
     defaultDuration,
-    userId,
+    sheetId,
+    userId, // legado
   } = req.body;
 
-  if (!title) return res.status(400).json({ error: 'title is required' });
-  if (!userId) return res.status(400).json({ error: 'userId is required' });
+  if (!title) {
+    return res.status(400).json({ error: 'title is required' });
+  }
+
+  if (!sheetId && !userId) {
+    return res
+      .status(400)
+      .json({ error: 'sheetId or userId is required' });
+  }
 
   db.prepare(`
     INSERT INTO tasks (
@@ -72,11 +119,12 @@ router.post('/', (req, res) => {
       billable,
       status,
       default_duration,
+      sheet_id,
       user_id,
       created_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `).run(
     id,
     title,
@@ -85,12 +133,19 @@ router.post('/', (req, res) => {
     billable ? 1 : 0,
     status ?? 'backlog',
     defaultDuration ?? '8h',
-    userId
+    sheetId ?? null,
+    userId ?? null
   );
 
   res.status(201).json({ id });
 });
 
+/**
+ * =========================
+ * UPDATE TASK
+ * =========================
+ * Nunca sobrescreve title com NULL
+ */
 router.put('/:id', (req, res) => {
   const {
     title,
@@ -99,12 +154,9 @@ router.put('/:id', (req, res) => {
     billable,
     status,
     defaultDuration,
-    userId,
+    sheetId,
+    userId, // legado
   } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ error: 'userId is required' });
-  }
 
   const result = db.prepare(`
     UPDATE tasks
@@ -115,6 +167,7 @@ router.put('/:id', (req, res) => {
          billable         = COALESCE(?, billable),
          status           = COALESCE(?, status),
          default_duration = COALESCE(?, default_duration),
+         sheet_id         = COALESCE(?, sheet_id),
          user_id          = COALESCE(?, user_id),
          updated_at       = datetime('now')
      WHERE id = ?
@@ -125,6 +178,7 @@ router.put('/:id', (req, res) => {
     billable !== undefined ? (billable ? 1 : 0) : null,
     status ?? null,
     defaultDuration ?? null,
+    sheetId ?? null,
     userId ?? null,
     req.params.id
   );
@@ -136,9 +190,21 @@ router.put('/:id', (req, res) => {
   res.sendStatus(204);
 });
 
-
+/**
+ * =========================
+ * DELETE TASK
+ * =========================
+ * Time entries são removidos via CASCADE
+ */
 router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+  const result = db
+    .prepare('DELETE FROM tasks WHERE id = ?')
+    .run(req.params.id);
+
+  if (result.changes === 0) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
   res.sendStatus(204);
 });
 

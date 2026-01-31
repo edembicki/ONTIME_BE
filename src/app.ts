@@ -5,6 +5,7 @@ import entries from './routes/timeEntries.routes';
 import { runMigrations } from './db/migrations';
 import projectsRoutes from './routes/projects.routes';
 import reportsRoutes from './routes/reports.routes';
+import sheetsRoutes from './routes/sheets.routes';
 
 runMigrations();
 
@@ -31,3 +32,5 @@ app.use('/tasks', tasks);
 app.use('/time-entries', entries);
 app.use('/projects', projectsRoutes);
 app.use('/reports', reportsRoutes);
+app.use('/sheets', sheetsRoutes);
+

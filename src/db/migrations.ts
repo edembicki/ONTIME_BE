@@ -10,6 +10,19 @@ export function runMigrations() {
 
   /**
    * =========================
+   * SHEETS (novo domínio)
+   * =========================
+   */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sheets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  /**
+   * =========================
    * TASKS
    * =========================
    */
@@ -22,16 +35,20 @@ export function runMigrations() {
       billable INTEGER,
       status TEXT,
       default_duration TEXT,
-      user_id TEXT,
+      user_id TEXT,     -- legado
+      sheet_id TEXT,    -- novo domínio
       created_at TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      FOREIGN KEY (sheet_id)
+        REFERENCES sheets(id)
+        ON DELETE CASCADE
     );
   `);
 
   /**
    * =========================
    * TIME ENTRIES
-   * (recriação com ON DELETE CASCADE)
+   * (recriação com FK correta)
    * =========================
    */
   db.exec(`
@@ -40,7 +57,8 @@ export function runMigrations() {
     CREATE TABLE IF NOT EXISTS time_entries_new (
       id TEXT PRIMARY KEY,
       task_id TEXT,
-      user_id TEXT,
+      sheet_id TEXT,
+      user_id TEXT, -- legado
       date TEXT,
       start TEXT,
       end TEXT,
@@ -48,12 +66,16 @@ export function runMigrations() {
       notes TEXT,
       FOREIGN KEY (task_id)
         REFERENCES tasks(id)
+        ON DELETE CASCADE,
+      FOREIGN KEY (sheet_id)
+        REFERENCES sheets(id)
         ON DELETE CASCADE
     );
 
     INSERT INTO time_entries_new (
       id,
       task_id,
+      sheet_id,
       user_id,
       date,
       start,
@@ -64,6 +86,7 @@ export function runMigrations() {
     SELECT
       id,
       task_id,
+      NULL,
       user_id,
       date,
       start,
@@ -78,7 +101,6 @@ export function runMigrations() {
     );
 
     DROP TABLE IF EXISTS time_entries;
-
     ALTER TABLE time_entries_new RENAME TO time_entries;
 
     PRAGMA foreign_keys = ON;
@@ -92,7 +114,8 @@ export function runMigrations() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS reports (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
+      sheet_id TEXT,
+      user_id TEXT, -- legado
       sender_email TEXT NOT NULL,
       destination_email TEXT NOT NULL,
       period_start TEXT NOT NULL,
@@ -100,13 +123,16 @@ export function runMigrations() {
       format TEXT NOT NULL,
       csv_base64 TEXT,
       pdf_base64 TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (sheet_id)
+        REFERENCES sheets(id)
+        ON DELETE CASCADE
     );
   `);
 
   /**
    * =========================
-   * USER SETTINGS
+   * USER SETTINGS (legado)
    * =========================
    */
   db.exec(`
@@ -123,9 +149,13 @@ export function runMigrations() {
    */
   ensureColumn('tasks', 'default_duration', 'TEXT');
   ensureColumn('tasks', 'user_id', 'TEXT');
+  ensureColumn('tasks', 'sheet_id', 'TEXT');
 
   ensureColumn('time_entries', 'user_id', 'TEXT');
+  ensureColumn('time_entries', 'sheet_id', 'TEXT');
 
+  ensureColumn('reports', 'user_id', 'TEXT');
+  ensureColumn('reports', 'sheet_id', 'TEXT');
   ensureColumn('reports', 'destination_email', 'TEXT');
   ensureColumn('reports', 'csv_base64', 'TEXT');
   ensureColumn('reports', 'pdf_base64', 'TEXT');
