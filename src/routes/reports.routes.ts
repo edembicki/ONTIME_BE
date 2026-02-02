@@ -75,7 +75,7 @@ router.post('/send', async (req, res) => {
       .prepare(
         `
         SELECT
-          te.date,
+          DATE(te.start) AS date,
           te.start,
           te.end,
           te.hours,
@@ -85,8 +85,9 @@ router.post('/send', async (req, res) => {
         FROM time_entries te
         JOIN tasks t ON t.id = te.task_id
         WHERE te.user_id = ?
-          AND te.date BETWEEN ? AND ?
-        ORDER BY te.date, te.start
+          AND DATE(te.start) BETWEEN ? AND ?
+        ORDER BY DATE(te.start), te.start
+
       `
       )
       .all(userId, periodStart, periodEnd) as any[];

@@ -35,7 +35,7 @@ router.get('/', (_req, res) => {
       description,
       created_at
     FROM sheets
-    ORDER BY created_at DESC
+    ORDER BY name
   `).all();
 
   res.json(rows);
